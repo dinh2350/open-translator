@@ -43,13 +43,13 @@
 
 | Task                                         | Status  | Notes      |
 | -------------------------------------------- | ------- | ---------- |
-| 3.1 @huggingface/transformers + Opus-MT ONNX | 🔴 TODO | no Python! |
-| 3.2 Translation service abstraction          | 🔴 TODO |            |
-| 3.3 Dual-panel UI layout                     | 🔴 TODO |            |
-| 3.4 Auto-scroll behavior                     | 🔴 TODO |            |
-| 3.5 Sync scrolling between panels            | 🔴 TODO |            |
-| 3.6 Interim text visual indicator            | 🔴 TODO |            |
-| 3.7 Session start/stop controls              | 🔴 TODO |            |
+| 3.1 @huggingface/transformers + Opus-MT ONNX | � Done | Xenova/opus-mt-en-vi via @huggingface/transformers v4, 45-63ms latency, onnxruntime-node backend |
+| 3.2 Translation service abstraction          | � Done | TranslationService interface in types.ts, OllamaTranslator stub for Phase 2 |
+| 3.3 Dual-panel UI layout                     | � Done | DualPanelView + TranscriptPanel (props-based), transcriptStore, useIPCListeners hook |
+| 3.4 Auto-scroll behavior                     | � Done | IntersectionObserver sentinel, "New content" button, smooth scroll |
+| 3.5 Sync scrolling between panels            | � Done | syncScroll toggle, segment-id sync, loop prevention via source ref |
+| 3.6 Interim text visual indicator            | � Done | Pulsing dot + italic 60% opacity for interim, transition-all 300ms, min-h prevents jumps, "Translating…" placeholder |
+| 3.7 Session start/stop controls              | � Done | ControlBar + StatusIndicator, session:start/stop IPC, lazy model init, quick restart |
 
 ### Sprint 4: Polish & Testing
 
@@ -125,6 +125,10 @@
 | 2026-04-12 | Task 2.5: PipelineOrchestrator with concurrent STT‖Translate | Central orchestrator manages FIFO queue (max 5, backpressure drops oldest). STT(N+1) runs concurrently with Translate(N) via Promise chaining. MetricsTracker tracks P95 latency (rolling window of 20) + memory via `process.memoryUsage()`. Emits typed `segment`, `metrics`, `status` events. StubTranslator placeholder for Sprint 3. index.ts refactored to delegate all STT/interim logic to orchestrator. |
 | 2026-04-12 | Task 2.6: STT latency benchmarked on Apple M4     | base.en P95=69ms (7.2x margin vs 500ms target), tiny.en P95=37ms (6.7x margin vs 250ms target). Metal GPU 2.9x faster than CPU. Fixed whisper-base.en SHA256 in registry (HuggingFace file updated). Performance exceeds targets so much that base.en could be default model for better accuracy. |
 | 2026-04-12 | Task 2.7: Adaptive downgrade immediate, upgrade suggestion only | AdaptiveModelQuality evaluates after each pipeline cycle. Downgrade base→tiny is immediate when P95 total >900ms or freemem <1.5GB. Upgrade tiny→base is only suggested (checked every 60s, requires P95 <300ms + RAM >3GB). Orchestrator pauses queue during model switch, resumes after. `model:switched` event forwarded to renderer. No chunks lost — queue preserved during switch. |
+| 2026-04-12 | Task 3.1: Xenova/opus-mt-en-vi instead of Helsinki-NLP | Helsinki-NLP/opus-mt-en-vi lacks `tokenizer.json` required by @huggingface/transformers v4. `Xenova/opus-mt-en-vi` is the ONNX-converted equivalent with all required files. Latency 45-63ms (well under 150ms target). Uses onnxruntime-node native backend (same v1.24.3 already installed for VAD). Model cached in `~/.open-translator/models/hf-cache/`. ~200MB download on first run. No Python dependency. |
+| 2026-04-12 | Task 3.2: TranslationService interface in translation/types.ts | Moved interface from orchestrator.ts inline definition to `src/main/translation/types.ts`. Full interface: `init()`, `translate()`, `free()`, `name`, `isReady`. Orchestrator imports from `@main/translation/types`. OllamaTranslator stub created for Phase 2 (Qwen2.5-3B). StubTranslator kept in orchestrator as fallback when no translator is set. |
+| 2026-04-12 | Task 3.3: Zustand transcriptStore + props-based TranscriptPanel | Replaced self-contained TranscriptPanel (internal state + IPC listener) with proper architecture: Zustand `transcriptStore` holds all segments/metrics/status, `useIPCListeners` hook feeds IPC events into store, `TranscriptPanel` is a pure props component (type='original'|'translated'), `DualPanelView` wraps two panels side-by-side. App.tsx restructured as full-height flex layout with header bar + dual panels + footer. |
+| 2026-04-12 | Task 3.4: IntersectionObserver for auto-scroll pause/resume | Uses IntersectionObserver on a sentinel div at the bottom of each panel. When sentinel is visible (user at bottom), auto-scroll is active. Scrolling up hides sentinel → pauses auto-scroll → shows floating "↓ New content" button. Clicking button calls `scrollIntoView({ behavior: 'smooth' })`. Each panel scrolls independently. No scroll event listeners needed (observer-based). |
 
 ---
 

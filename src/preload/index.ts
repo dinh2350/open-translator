@@ -6,6 +6,12 @@ const api = {
   sendAudioChunk: (buffer: ArrayBuffer): void => {
     ipcRenderer.send('audio:chunk', buffer);
   },
+  sessionStart: (): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('session:start');
+  },
+  sessionStop: (): Promise<{ success: boolean }> => {
+    return ipcRenderer.invoke('session:stop');
+  },
   onPipelineEvent: (callback: (event: string, data: unknown) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, eventName: string, data: unknown): void => {
       callback(eventName, data);

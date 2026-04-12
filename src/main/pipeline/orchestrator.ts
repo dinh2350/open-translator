@@ -6,10 +6,7 @@ import type { TranscribeOptions } from '@main/stt';
 import { MetricsTracker } from './metrics';
 import { AdaptiveModelQuality } from './adaptive';
 import type { AdaptiveEvent } from './adaptive';
-
-export interface TranslationService {
-  translate(text: string): Promise<string>;
-}
+import type { TranslationService } from '@main/translation/types';
 
 type OrchestratorEvent = 'segment' | 'metrics' | 'status' | 'model:switched';
 type StatusValue = 'idle' | 'recording' | 'processing';
@@ -18,13 +15,24 @@ type EventCallback<T = unknown> = (data: T) => void;
 const MAX_QUEUE_SIZE = 5;
 
 /**
- * Stub translator until Sprint 3 (Task 3.1/3.2).
- * Returns the original text unmodified — no "[VI]" prefix to avoid
- * polluting real transcript output.
+ * Stub translator until a real TranslationService is provided.
+ * Returns the original text unmodified.
  */
 class StubTranslator implements TranslationService {
+  get name(): string {
+    return 'stub';
+  }
+  get isReady(): boolean {
+    return true;
+  }
+  async init(): Promise<void> {
+    // no-op
+  }
   async translate(text: string): Promise<string> {
     return text;
+  }
+  free(): void {
+    // no-op
   }
 }
 

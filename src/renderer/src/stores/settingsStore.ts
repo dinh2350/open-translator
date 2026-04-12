@@ -4,16 +4,23 @@ import { MicrophoneCapture } from '@renderer/audio/microphone';
 interface SettingsState {
   selectedDeviceId: string | null;
   availableDevices: MediaDeviceInfo[];
+  syncScroll: boolean;
   setSelectedDevice: (id: string) => void;
+  setSyncScroll: (enabled: boolean) => void;
   refreshDevices: () => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   selectedDeviceId: null,
   availableDevices: [],
+  syncScroll: false,
 
   setSelectedDevice: (id: string) => {
     set({ selectedDeviceId: id });
+  },
+
+  setSyncScroll: (enabled: boolean) => {
+    set({ syncScroll: enabled });
   },
 
   refreshDevices: async () => {

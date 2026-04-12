@@ -1,1 +1,1 @@
-export { registerIPCHandlers, onAudioChunk, getModelManager } from './handlers';
+export { registerIPCHandlers, onAudioChunk, getModelManager, feedAudio } from './handlers';

@@ -25,6 +25,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@huggingface/transformers": "^4.0.1",
     "onnxruntime-node": "^1.24.3",
     "zustand": "^5.0.12"
   },

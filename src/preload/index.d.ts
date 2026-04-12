@@ -5,6 +5,8 @@ declare global {
     electron: ElectronAPI;
     api: {
       sendAudioChunk: (buffer: ArrayBuffer) => void;
+      sessionStart: () => Promise<{ success: boolean; error?: string }>;
+      sessionStop: () => Promise<{ success: boolean }>;
       onPipelineEvent: (callback: (event: string, data: unknown) => void) => () => void;
     };
   }

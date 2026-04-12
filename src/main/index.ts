@@ -2,10 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, session } from 'electron';
 import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
-import { registerIPCHandlers, onAudioChunk, getModelManager } from './ipc';
-import { AudioPipeline } from './audio';
-import { WhisperSTT } from './stt';
-import { PipelineOrchestrator } from './pipeline';
+import { registerIPCHandlers, onAudioChunk, feedAudio } from './ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -64,86 +61,22 @@ app.whenReady().then(() => {
     callback(permission === 'media');
   });
 
-  // Register IPC handlers
+  // Register IPC handlers (includes session:start / session:stop)
   registerIPCHandlers();
 
-  // Initialize audio pipeline: Resample → VAD → Orchestrator (STT → Translation)
-  const pipeline = new AudioPipeline();
-  const stt = new WhisperSTT(getModelManager());
-  const orchestrator = new PipelineOrchestrator(stt);
+  // Audio chunk listener: compute levels for debug UI + feed session pipeline
+  onAudioChunk((samples) => {
+    // Compute RMS level for the debug UI (always, regardless of session state)
+    let sum = 0;
+    for (let i = 0; i < samples.length; i++) {
+      sum += samples[i] * samples[i];
+    }
+    const rms = Math.sqrt(sum / samples.length);
+    sendToRenderer('audio:level', { rms, sampleCount: samples.length });
 
-  // Orchestrator events → renderer
-  orchestrator.on('segment', (segment) => {
-    sendToRenderer('transcript:segment', segment);
+    // Feed into pipeline (gated on session active inside feedAudio)
+    feedAudio(samples);
   });
-  orchestrator.on('metrics', (metrics) => {
-    sendToRenderer('pipeline:metrics', metrics);
-  });
-  orchestrator.on('status', (status) => {
-    sendToRenderer('pipeline:status', status);
-  });
-  orchestrator.on('model:switched', (event) => {
-    sendToRenderer('model:switched', event);
-  });
-
-  pipeline
-    .init()
-    .then(() => {
-      pipeline.onSpeechStart(() => {
-        console.log('[pipeline] Speech started');
-        orchestrator.handleSpeechStart();
-        sendToRenderer('vad:status', { speaking: true });
-      });
-
-      // Interim transcription: every ~1s during active speech
-      pipeline.onSpeechActive((audio) => {
-        orchestrator.enqueueInterim(audio);
-      });
-
-      // Final transcription: when VAD detects end-of-speech
-      pipeline.onSpeechEnd((audio) => {
-        const durationMs = (audio.length / 16000) * 1000;
-        console.log(
-          `[pipeline] Speech ended: ${audio.length} samples (${durationMs.toFixed(0)}ms)`
-        );
-        sendToRenderer('vad:status', { speaking: false });
-        sendToRenderer('speech:segment', { samples: audio.length, durationMs });
-
-        orchestrator.enqueue(audio);
-      });
-
-      onAudioChunk((samples) => {
-        // Compute RMS level for the debug UI
-        let sum = 0;
-        for (let i = 0; i < samples.length; i++) {
-          sum += samples[i] * samples[i];
-        }
-        const rms = Math.sqrt(sum / samples.length);
-        sendToRenderer('audio:level', { rms, sampleCount: samples.length });
-
-        pipeline.feed(samples).catch((err) => {
-          console.error('[pipeline] Error processing audio:', err);
-        });
-      });
-    })
-    .catch((err) => {
-      console.error('[pipeline] Failed to initialize:', err);
-      // Fallback: just log audio chunks
-      onAudioChunk((samples) => {
-        const peak = Math.max(...samples.slice(0, 100)).toFixed(4);
-        console.log(`[audio] chunk: ${samples.length} samples, peak=${peak}`);
-      });
-    });
-
-  // Initialize STT model (can run in parallel with pipeline/UI setup)
-  stt
-    .init('tiny.en')
-    .then(() => {
-      orchestrator.metrics.setActiveModel('tiny.en');
-    })
-    .catch((err) => {
-      console.error('[stt] Failed to initialize whisper model:', err);
-    });
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'));
