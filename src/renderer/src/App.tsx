@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { AudioSourceSelector } from '@renderer/components/AudioSourceSelector';
 import { AudioDebugPanel } from '@renderer/components/AudioDebugPanel';
+import { TranscriptPanel } from '@renderer/components/TranscriptPanel';
 import { MicrophoneCapture } from '@renderer/audio/microphone';
 import { useSettingsStore } from '@renderer/stores/settingsStore';
 
@@ -52,6 +53,7 @@ function App(): React.JSX.Element {
       </div>
 
       {recording && <AudioDebugPanel />}
+      {recording && <TranscriptPanel />}
 
       <p className="mt-auto text-xs text-gray-600">100% local &middot; 100% free</p>
     </div>

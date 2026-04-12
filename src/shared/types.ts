@@ -4,6 +4,7 @@ export interface TranscriptSegment {
   translated?: string; // Vietnamese translation
   timestamp: number; // Unix ms
   isFinal: boolean; // false = interim/partial
+  pendingId?: string; // Groups interim + final segments for the same utterance
   speakerId?: string; // Phase 2
   audioDurationMs: number; // Duration of source audio chunk
   sttLatencyMs: number; // whisper processing time

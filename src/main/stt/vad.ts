@@ -4,16 +4,16 @@ import { app } from 'electron';
 import { is } from '@electron-toolkit/utils';
 
 /**
- * Silero VAD v5 wrapper for the Electron main process.
+ * Silero VAD v4 wrapper for the Electron main process.
  * Uses onnxruntime-node (native) for fast inference.
  *
  * Architecture decision: Option B — VAD in main process.
  * @ricky0123/vad-node is deprecated (Oct 2024), so we use the
  * Silero ONNX model directly with onnxruntime-node.
  *
- * Model inputs:  input [1, N], state [2, 1, 128], sr [16000n]
- * Model outputs: output (speech probability), stateN (updated state)
- * Frame size: 512 samples (32ms at 16kHz)
+ * Model inputs:  input [1, 1536], sr [16000n], h [2, 1, 64], c [2, 1, 64]
+ * Model outputs: output (speech probability), hn (hidden state), cn (cell state)
+ * Frame size: 1536 samples (96ms at 16kHz)
  */
 
 /** Tunable VAD parameters */
@@ -28,6 +28,8 @@ export interface VADOptions {
   preSpeechPadMs: number;
   /** Minimum speech duration to emit (ms) — avoids false positives */
   minSpeechMs: number;
+  /** Interval between interim speech emissions during active speech (ms) */
+  interimIntervalMs: number;
 }
 
 const DEFAULT_OPTIONS: VADOptions = {
@@ -36,19 +38,22 @@ const DEFAULT_OPTIONS: VADOptions = {
   redemptionMs: 240,
   preSpeechPadMs: 160,
   minSpeechMs: 100,
+  interimIntervalMs: 1000,
 };
 
-/** Frame size for Silero VAD v5 at 16kHz */
-const FRAME_SIZE = 512;
+/** Frame size for Silero VAD v4 at 16kHz */
+const FRAME_SIZE = 1536;
 /** Milliseconds per frame at 16kHz */
-const MS_PER_FRAME = (FRAME_SIZE / 16000) * 1000; // 32ms
+const MS_PER_FRAME = (FRAME_SIZE / 16000) * 1000; // 96ms
 
 type SpeechStartCallback = () => void;
 type SpeechEndCallback = (audio: Float32Array) => void;
+type SpeechActiveCallback = (audio: Float32Array) => void;
 
 export class VoiceActivityDetector {
   private session: ort.InferenceSession | null = null;
-  private state: ort.Tensor | null = null;
+  private h: ort.Tensor | null = null;
+  private c: ort.Tensor | null = null;
   private sr: ort.Tensor | null = null;
   private options: VADOptions;
 
@@ -61,55 +66,69 @@ export class VoiceActivityDetector {
   private preSpeechPadFrames: number;
   private minSpeechFrames: number;
 
+  // Interim emission state
+  private interimIntervalFrames: number;
+  private framesSinceLastInterim = 0;
+
+  // Leftover samples from previous processAudio call (< FRAME_SIZE)
+  private leftover: Float32Array = new Float32Array(0);
+
   // Callbacks
   private onSpeechStartCallbacks: SpeechStartCallback[] = [];
   private onSpeechEndCallbacks: SpeechEndCallback[] = [];
+  private onSpeechActiveCallbacks: SpeechActiveCallback[] = [];
 
   constructor(options?: Partial<VADOptions>) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
     this.redemptionFrames = Math.floor(this.options.redemptionMs / MS_PER_FRAME);
     this.preSpeechPadFrames = Math.floor(this.options.preSpeechPadMs / MS_PER_FRAME);
     this.minSpeechFrames = Math.floor(this.options.minSpeechMs / MS_PER_FRAME);
+    this.interimIntervalFrames = Math.floor(this.options.interimIntervalMs / MS_PER_FRAME);
   }
 
   async init(): Promise<void> {
     const modelPath = is.dev
-      ? join(process.cwd(), 'resources/models/silero_vad_v5.onnx')
-      : join(app.getAppPath(), '..', 'resources/models/silero_vad_v5.onnx');
+      ? join(process.cwd(), 'resources/models/silero_vad.onnx')
+      : join(app.getAppPath(), '..', 'resources/models/silero_vad.onnx');
 
     this.session = await ort.InferenceSession.create(modelPath, {
       executionProviders: ['cpu'],
     });
+
+    console.log('[vad] Model inputs:', this.session.inputNames);
+    console.log('[vad] Model outputs:', this.session.outputNames);
 
     this.sr = new ort.Tensor('int64', BigInt64Array.from([16000n]), [1]);
     this.resetState();
   }
 
   private resetState(): void {
-    const zeroes = new Float32Array(2 * 1 * 128);
-    this.state = new ort.Tensor('float32', zeroes, [2, 1, 128]);
+    this.h = new ort.Tensor('float32', new Float32Array(2 * 1 * 64), [2, 1, 64]);
+    this.c = new ort.Tensor('float32', new Float32Array(2 * 1 * 64), [2, 1, 64]);
   }
 
   /**
-   * Process a single 512-sample frame through the Silero VAD model.
+   * Process a single 1536-sample frame through the Silero VAD v4 model.
    * Returns speech probability (0-1).
    */
   private async runModel(frame: Float32Array): Promise<number> {
-    if (!this.session || !this.state || !this.sr) {
+    if (!this.session || !this.h || !this.c || !this.sr) {
       throw new Error('VAD not initialized. Call init() first.');
     }
 
     const inputTensor = new ort.Tensor('float32', frame, [1, frame.length]);
     const result = await this.session.run({
       input: inputTensor,
-      state: this.state,
       sr: this.sr,
+      h: this.h,
+      c: this.c,
     });
 
-    if (!result['stateN']) {
-      throw new Error('No state output from VAD model');
+    if (!result['hn'] || !result['cn']) {
+      throw new Error('Missing state output from VAD model');
     }
-    this.state = result['stateN'] as ort.Tensor;
+    this.h = result['hn'] as ort.Tensor;
+    this.c = result['cn'] as ort.Tensor;
 
     const output = result['output']?.data;
     if (!output || typeof output[0] !== 'number') {
@@ -121,14 +140,32 @@ export class VoiceActivityDetector {
 
   /**
    * Process resampled 16kHz audio through the VAD.
-   * Audio is split into 512-sample frames and processed sequentially.
+   * Audio is split into 1536-sample frames and processed sequentially.
+   * Leftover samples are buffered for the next call.
    * Emits speechStart/speechEnd events via registered callbacks.
    */
   async processAudio(samples: Float32Array): Promise<void> {
+    // Prepend any leftover samples from previous call
+    let input: Float32Array;
+    if (this.leftover.length > 0) {
+      input = new Float32Array(this.leftover.length + samples.length);
+      input.set(this.leftover);
+      input.set(samples, this.leftover.length);
+      this.leftover = new Float32Array(0);
+    } else {
+      input = samples;
+    }
+
     // Split input into FRAME_SIZE chunks
-    for (let offset = 0; offset + FRAME_SIZE <= samples.length; offset += FRAME_SIZE) {
-      const frame = samples.slice(offset, offset + FRAME_SIZE);
+    let offset = 0;
+    for (; offset + FRAME_SIZE <= input.length; offset += FRAME_SIZE) {
+      const frame = input.slice(offset, offset + FRAME_SIZE);
       await this.processFrame(frame);
+    }
+
+    // Store leftover for next call
+    if (offset < input.length) {
+      this.leftover = input.slice(offset);
     }
   }
 
@@ -146,8 +183,24 @@ export class VoiceActivityDetector {
     // Speech start
     if (isSpeech && !this.speaking) {
       this.speaking = true;
+      this.framesSinceLastInterim = 0;
       for (const cb of this.onSpeechStartCallbacks) {
         cb();
+      }
+    }
+
+    // Interim emission: every ~interimIntervalMs while speaking
+    if (this.speaking) {
+      this.framesSinceLastInterim++;
+      if (
+        this.framesSinceLastInterim >= this.interimIntervalFrames &&
+        this.onSpeechActiveCallbacks.length > 0
+      ) {
+        this.framesSinceLastInterim = 0;
+        const audio = concatFloat32Arrays(this.audioBuffer.map((item) => item.frame));
+        for (const cb of this.onSpeechActiveCallbacks) {
+          cb(audio);
+        }
       }
     }
 
@@ -173,6 +226,7 @@ export class VoiceActivityDetector {
     this.redemptionCounter = 0;
     this.speechFrameCount = 0;
     this.speaking = false;
+    this.framesSinceLastInterim = 0;
 
     const audioBuffer = this.audioBuffer;
     this.audioBuffer = [];
@@ -195,6 +249,11 @@ export class VoiceActivityDetector {
     this.onSpeechEndCallbacks.push(callback);
   }
 
+  /** Register callback for interim audio every ~interimIntervalMs while speaking */
+  onSpeechActive(callback: SpeechActiveCallback): void {
+    this.onSpeechActiveCallbacks.push(callback);
+  }
+
   /** Flush any in-progress speech segment (e.g., on mic stop) */
   flush(): void {
     if (this.speaking) {
@@ -206,8 +265,10 @@ export class VoiceActivityDetector {
   reset(): void {
     this.speaking = false;
     this.audioBuffer = [];
+    this.leftover = new Float32Array(0);
     this.redemptionCounter = 0;
     this.speechFrameCount = 0;
+    this.framesSinceLastInterim = 0;
     this.resetState();
   }
 
@@ -216,10 +277,12 @@ export class VoiceActivityDetector {
       await this.session.release();
       this.session = null;
     }
-    this.state = null;
+    this.h = null;
+    this.c = null;
     this.sr = null;
     this.onSpeechStartCallbacks = [];
     this.onSpeechEndCallbacks = [];
+    this.onSpeechActiveCallbacks = [];
   }
 }
 

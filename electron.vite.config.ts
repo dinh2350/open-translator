@@ -8,7 +8,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        external: ['better-sqlite3', 'onnxruntime-node'],
+        external: ['better-sqlite3', 'onnxruntime-node', /whisper_addon\.node$/],
       },
     },
     resolve: {

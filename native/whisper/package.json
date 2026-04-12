@@ -1,0 +1,17 @@
+{
+  "name": "@open-translator/whisper-addon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native N-API addon for whisper.cpp with Metal GPU support",
+  "main": "index.ts",
+  "scripts": {
+    "build": "cmake-js compile -B Release",
+    "build:debug": "cmake-js compile -B Debug",
+    "rebuild": "cmake-js rebuild -B Release",
+    "clean": "cmake-js clean"
+  },
+  "dependencies": {
+    "cmake-js": "^7.3.0",
+    "node-addon-api": "^8.3.1"
+  }
+}

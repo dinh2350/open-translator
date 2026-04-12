@@ -44,6 +44,11 @@ export class AudioPipeline {
     this.vad.onSpeechEnd(callback);
   }
 
+  /** Register callback for interim audio every ~1s during active speech */
+  onSpeechActive(callback: (audio: Float32Array) => void): void {
+    this.vad.onSpeechActive(callback);
+  }
+
   /** Flush any in-progress speech segment */
   flush(): void {
     this.vad.flush();

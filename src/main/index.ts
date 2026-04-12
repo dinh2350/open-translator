@@ -2,8 +2,10 @@ import { app, shell, BrowserWindow, ipcMain, session } from 'electron';
 import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
-import { registerIPCHandlers, onAudioChunk } from './ipc';
+import { registerIPCHandlers, onAudioChunk, getModelManager } from './ipc';
 import { AudioPipeline } from './audio';
+import { WhisperSTT } from './stt';
+import { PipelineOrchestrator } from './pipeline';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -65,15 +67,40 @@ app.whenReady().then(() => {
   // Register IPC handlers
   registerIPCHandlers();
 
-  // Initialize audio pipeline: Resample → VAD → Speech chunks
+  // Initialize audio pipeline: Resample → VAD → Orchestrator (STT → Translation)
   const pipeline = new AudioPipeline();
+  const stt = new WhisperSTT(getModelManager());
+  const orchestrator = new PipelineOrchestrator(stt);
+
+  // Orchestrator events → renderer
+  orchestrator.on('segment', (segment) => {
+    sendToRenderer('transcript:segment', segment);
+  });
+  orchestrator.on('metrics', (metrics) => {
+    sendToRenderer('pipeline:metrics', metrics);
+  });
+  orchestrator.on('status', (status) => {
+    sendToRenderer('pipeline:status', status);
+  });
+  orchestrator.on('model:switched', (event) => {
+    sendToRenderer('model:switched', event);
+  });
+
   pipeline
     .init()
     .then(() => {
       pipeline.onSpeechStart(() => {
         console.log('[pipeline] Speech started');
+        orchestrator.handleSpeechStart();
         sendToRenderer('vad:status', { speaking: true });
       });
+
+      // Interim transcription: every ~1s during active speech
+      pipeline.onSpeechActive((audio) => {
+        orchestrator.enqueueInterim(audio);
+      });
+
+      // Final transcription: when VAD detects end-of-speech
       pipeline.onSpeechEnd((audio) => {
         const durationMs = (audio.length / 16000) * 1000;
         console.log(
@@ -81,7 +108,8 @@ app.whenReady().then(() => {
         );
         sendToRenderer('vad:status', { speaking: false });
         sendToRenderer('speech:segment', { samples: audio.length, durationMs });
-        // TODO (Task 2.3): Send speech chunk to STT
+
+        orchestrator.enqueue(audio);
       });
 
       onAudioChunk((samples) => {
@@ -105,6 +133,16 @@ app.whenReady().then(() => {
         const peak = Math.max(...samples.slice(0, 100)).toFixed(4);
         console.log(`[audio] chunk: ${samples.length} samples, peak=${peak}`);
       });
+    });
+
+  // Initialize STT model (can run in parallel with pipeline/UI setup)
+  stt
+    .init('tiny.en')
+    .then(() => {
+      orchestrator.metrics.setActiveModel('tiny.en');
+    })
+    .catch((err) => {
+      console.error('[stt] Failed to initialize whisper model:', err);
     });
 
   // IPC test

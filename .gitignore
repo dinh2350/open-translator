@@ -6,4 +6,6 @@ out
 *.log*
 *.dmg
 native/whisper/build/
+native/whisper/vendor/
+native/whisper/node_modules/
 models/
