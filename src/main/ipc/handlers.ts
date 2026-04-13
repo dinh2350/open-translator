@@ -2,11 +2,14 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { ModelManager } from '@main/models';
 import { AudioPipeline } from '@main/audio';
 import { WhisperSTT } from '@main/stt';
-import { PipelineOrchestrator } from '@main/pipeline';
+import { PipelineOrchestrator, PipelineErrorHandler } from '@main/pipeline';
 import { OpusMTTranslator } from '@main/translation';
+import { loadSettings, updateSettings } from '@main/storage';
+import type { AppSettings } from '@shared/types';
 
 const audioChunkListeners: ((samples: Float32Array) => void)[] = [];
 const modelManager = new ModelManager();
+const errorHandler = new PipelineErrorHandler();
 
 // --- Session state (persists across start/stop for quick restart) ---
 let pipeline: AudioPipeline | null = null;
@@ -15,10 +18,29 @@ let orchestrator: PipelineOrchestrator | null = null;
 let translator: OpusMTTranslator | null = null;
 let modelsLoaded = false;
 let sessionActive = false;
+let metricsInterval: ReturnType<typeof setInterval> | null = null;
+
+const METRICS_INTERVAL_MS = 5000;
 
 function sendToRenderer(event: string, data: unknown): void {
   const win = BrowserWindow.getAllWindows()[0];
   win?.webContents.send('pipeline:event', event, data);
+}
+
+function startMetricsInterval(): void {
+  stopMetricsInterval();
+  metricsInterval = setInterval(() => {
+    if (orchestrator) {
+      sendToRenderer('pipeline:metrics', orchestrator.metrics.getMetrics());
+    }
+  }, METRICS_INTERVAL_MS);
+}
+
+function stopMetricsInterval(): void {
+  if (metricsInterval) {
+    clearInterval(metricsInterval);
+    metricsInterval = null;
+  }
 }
 
 export function getModelManager(): ModelManager {
@@ -55,6 +77,8 @@ async function ensureModels(): Promise<void> {
   ]);
 
   translator = opusMT;
+  errorHandler.setStt(stt);
+  errorHandler.setTranslator(translator);
 
   // Create orchestrator with both services
   orchestrator = new PipelineOrchestrator(stt, translator);
@@ -127,10 +151,26 @@ export function registerIPCHandlers(): void {
       await ensureModels();
       pipeline!.reset();
       sessionActive = true;
+      errorHandler.resetRetries();
+      startMetricsInterval();
       sendToRenderer('pipeline:status', 'recording');
       console.log('[session] Started');
       return { success: true };
     } catch (err) {
+      const handled = await errorHandler.handleError('model-load', err);
+      if (handled) {
+        // Error handler may have switched to a smaller model — retry once
+        try {
+          await ensureModels();
+          pipeline!.reset();
+          sessionActive = true;
+          startMetricsInterval();
+          sendToRenderer('pipeline:status', 'recording');
+          return { success: true };
+        } catch (retryErr) {
+          await errorHandler.handleError('model-load', retryErr);
+        }
+      }
       const message = err instanceof Error ? err.message : 'Unknown error';
       console.error('[session] Failed to start:', err);
       sendToRenderer('pipeline:status', 'error');
@@ -142,11 +182,48 @@ export function registerIPCHandlers(): void {
     if (!sessionActive) return { success: true };
 
     sessionActive = false;
+    stopMetricsInterval();
     pipeline?.flush();
     sendToRenderer('pipeline:status', 'idle');
     console.log('[session] Stopped');
     return { success: true };
   });
+
+  // --- Settings ---
+
+  ipcMain.handle('settings:get', () => {
+    return loadSettings();
+  });
+
+  ipcMain.handle('settings:update', (_event, partial: Partial<AppSettings>) => {
+    return updateSettings(partial);
+  });
+
+  // --- Model switch (from settings) ---
+
+  ipcMain.handle(
+    'model:switch-whisper',
+    async (_event, modelName: 'tiny' | 'tiny.en' | 'base' | 'base.en' | 'small' | 'small.en') => {
+      if (!stt) return { success: false, error: 'STT not initialized' };
+
+      try {
+        sendToRenderer('pipeline:status', 'loading');
+        await stt.switchModel(modelName);
+        orchestrator?.metrics.setActiveModel(modelName);
+        // Persist the base model name (strip .en)
+        const baseModel = modelName.replace('.en', '') as 'tiny' | 'base' | 'small';
+        updateSettings({ whisperModel: baseModel });
+        sendToRenderer('pipeline:status', sessionActive ? 'recording' : 'idle');
+        console.log(`[settings] Whisper model switched to ${modelName}`);
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        console.error('[settings] Model switch failed:', err);
+        sendToRenderer('pipeline:status', sessionActive ? 'recording' : 'idle');
+        return { success: false, error: message };
+      }
+    }
+  );
 }
 
 export function onAudioChunk(callback: (samples: Float32Array) => void): void {
@@ -157,6 +234,6 @@ export function onAudioChunk(callback: (samples: Float32Array) => void): void {
 export function feedAudio(samples: Float32Array): void {
   if (!sessionActive || !pipeline) return;
   pipeline.feed(samples).catch((err) => {
-    console.error('[pipeline] Error processing audio:', err);
+    errorHandler.handleError('audio', err);
   });
 }

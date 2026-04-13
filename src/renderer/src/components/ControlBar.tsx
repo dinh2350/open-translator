@@ -5,7 +5,7 @@ import { MicrophoneCapture } from '@renderer/audio/microphone';
 import { useSettingsStore } from '@renderer/stores/settingsStore';
 import { useTranscriptStore } from '@renderer/stores/transcriptStore';
 
-export function ControlBar(): React.JSX.Element {
+export function ControlBar({ onOpenSettings }: { onOpenSettings: () => void }): React.JSX.Element {
   const [starting, setStarting] = useState(false);
   const micRef = useRef<MicrophoneCapture | null>(null);
   const selectedDeviceId = useSettingsStore((s) => s.selectedDeviceId);
@@ -64,7 +64,7 @@ export function ControlBar(): React.JSX.Element {
   const buttonDisabled = isLoading;
 
   return (
-    <div className="flex items-center gap-4 px-6 py-3 shrink-0 border-b border-gray-800">
+    <div className="flex items-center gap-4 px-6 py-3 shrink-0 border-b border-gray-200 dark:border-gray-800">
       <h1 className="text-lg font-bold mr-auto">Open Translator</h1>
 
       <StatusIndicator />
@@ -72,12 +72,20 @@ export function ControlBar(): React.JSX.Element {
       <AudioSourceSelector />
 
       <button
+        onClick={onOpenSettings}
+        className="px-3 py-1.5 rounded text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+        title="Settings"
+      >
+        ⚙
+      </button>
+
+      <button
         onClick={isRecording ? handleStop : handleStart}
         disabled={buttonDisabled}
         className={[
           'px-4 py-1.5 rounded text-sm font-medium transition-colors',
           buttonDisabled
-            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+            ? 'bg-gray-300 text-gray-500 dark:bg-gray-600 dark:text-gray-400 cursor-not-allowed'
             : isRecording
               ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
               : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer',

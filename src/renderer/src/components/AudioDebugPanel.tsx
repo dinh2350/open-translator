@@ -109,11 +109,13 @@ export function AudioDebugPanel(): React.JSX.Element {
 
   return (
     <div className="w-full max-w-xl space-y-3">
-      <div className="flex items-center justify-between text-xs text-gray-400">
+      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
         <span className="font-mono">Audio Pipeline Debug</span>
         <span
           className={`px-2 py-0.5 rounded text-xs font-semibold ${
-            state.speaking ? 'bg-green-500/20 text-green-400' : 'bg-gray-700/50 text-gray-500'
+            state.speaking
+              ? 'bg-green-500/20 text-green-400'
+              : 'bg-gray-200/50 text-gray-400 dark:bg-gray-700/50 dark:text-gray-500'
           }`}
         >
           {state.speaking ? '● Speaking' : '○ Silent'}
@@ -125,13 +127,13 @@ export function AudioDebugPanel(): React.JSX.Element {
         ref={canvasRef}
         width={600}
         height={100}
-        className="w-full h-24 rounded border border-gray-700"
+        className="w-full h-24 rounded border border-gray-300 dark:border-gray-700"
       />
 
       {/* Level meter */}
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-500 w-8">Level</span>
-        <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+        <span className="text-xs text-gray-400 dark:text-gray-500 w-8">Level</span>
+        <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-75 ${
               levelPercent > 80
@@ -143,20 +145,23 @@ export function AudioDebugPanel(): React.JSX.Element {
             style={{ width: `${levelPercent}%` }}
           />
         </div>
-        <span className="text-xs text-gray-500 font-mono w-14 text-right">
+        <span className="text-xs text-gray-400 dark:text-gray-500 font-mono w-14 text-right">
           {levelDb.toFixed(1)} dB
         </span>
       </div>
 
       {/* Stats */}
-      <div className="flex gap-4 text-xs text-gray-400">
+      <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
         <div>
-          Speech segments: <span className="text-white font-mono">{state.segmentCount}</span>
+          Speech segments:{' '}
+          <span className="text-gray-900 dark:text-white font-mono">{state.segmentCount}</span>
         </div>
         {state.lastSegmentDurationMs > 0 && (
           <div>
             Last:{' '}
-            <span className="text-white font-mono">{state.lastSegmentDurationMs.toFixed(0)}ms</span>
+            <span className="text-gray-900 dark:text-white font-mono">
+              {state.lastSegmentDurationMs.toFixed(0)}ms
+            </span>
           </div>
         )}
       </div>

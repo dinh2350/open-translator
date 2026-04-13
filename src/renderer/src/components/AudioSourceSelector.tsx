@@ -21,14 +21,17 @@ export function AudioSourceSelector(): React.JSX.Element {
 
   return (
     <div className="flex items-center gap-2">
-      <label htmlFor="mic-select" className="text-sm text-gray-400 whitespace-nowrap">
+      <label
+        htmlFor="mic-select"
+        className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap"
+      >
         Microphone
       </label>
       <select
         id="mic-select"
         value={selectedDeviceId ?? ''}
         onChange={(e) => setSelectedDevice(e.target.value)}
-        className="bg-gray-800 text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-700 focus:border-blue-500 focus:outline-none min-w-48 truncate"
+        className="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 text-sm rounded px-2 py-1.5 border border-gray-300 dark:border-gray-700 focus:border-blue-500 focus:outline-none min-w-48 truncate"
       >
         {availableDevices.length === 0 && (
           <option value="" disabled>

@@ -1,5 +1,6 @@
 import type { PipelineMetrics } from '@shared/types';
 import type { WhisperModelName } from '@main/stt';
+import { totalmem } from 'os';
 
 const WINDOW_SIZE = 20;
 
@@ -48,7 +49,7 @@ export class MetricsTracker {
   }
 
   getMemoryUsageMB(): number {
-    return process.memoryUsage().heapUsed / (1024 * 1024);
+    return process.memoryUsage().rss / (1024 * 1024);
   }
 
   getMetrics(): PipelineMetrics {
@@ -59,6 +60,7 @@ export class MetricsTracker {
       translationP95Ms: this.getP95Translation(),
       totalP95Ms: this.getP95Total(),
       memoryUsageMB: this.getMemoryUsageMB(),
+      systemMemoryMB: totalmem() / (1024 * 1024),
       activeModel: base,
       chunksProcessed: this.processed,
       chunksDropped: this.dropped,

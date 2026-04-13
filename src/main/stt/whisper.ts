@@ -1,14 +1,19 @@
-import { resolve } from 'path';
+import { resolve, join } from 'path';
 import { randomUUID } from 'crypto';
 import { performance } from 'perf_hooks';
+import { app } from 'electron';
+import { is } from '@electron-toolkit/utils';
 import type { AudioChunk, TranscriptSegment } from '@shared/types';
 import { ModelManager } from '@main/models';
 
-// The native addon path resolves from the project root at runtime
+// In dev: native addon is at native/whisper/build/Release/whisper_addon.node
+// In packaged app: it's copied to resources/ via electron-builder extraResources
+const addonPath = is.dev
+  ? resolve(__dirname, '../../native/whisper/build/Release/whisper_addon.node')
+  : join(app.getAppPath(), '..', 'native', 'whisper_addon.node');
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { WhisperModel } = require(
-  resolve(__dirname, '../../native/whisper/build/Release/whisper_addon.node')
-);
+const { WhisperModel } = require(addonPath);
 
 type WhisperModelType = InstanceType<typeof WhisperModel>;
 

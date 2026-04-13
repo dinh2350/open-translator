@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useTranscriptStore } from '@renderer/stores/transcriptStore';
+import type { PipelineError } from '@renderer/stores/transcriptStore';
 import type { TranscriptSegment, PipelineMetrics } from '@shared/types';
 
 /**
@@ -10,6 +11,7 @@ export function useIPCListeners(): void {
   const addSegment = useTranscriptStore((s) => s.addSegment);
   const setMetrics = useTranscriptStore((s) => s.setMetrics);
   const setStatus = useTranscriptStore((s) => s.setStatus);
+  const addError = useTranscriptStore((s) => s.addError);
 
   useEffect(() => {
     const cleanup = window.api.onPipelineEvent((event: string, data: unknown) => {
@@ -23,8 +25,11 @@ export function useIPCListeners(): void {
         case 'pipeline:status':
           setStatus(data as 'idle' | 'loading' | 'recording' | 'processing' | 'error');
           break;
+        case 'pipeline:error':
+          addError(data as PipelineError);
+          break;
       }
     });
     return cleanup;
-  }, [addSegment, setMetrics, setStatus]);
+  }, [addSegment, setMetrics, setStatus, addError]);
 }

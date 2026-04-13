@@ -3,11 +3,18 @@ import type { TranscriptSegment, PipelineMetrics } from '@shared/types';
 
 type PipelineStatus = 'idle' | 'loading' | 'recording' | 'processing' | 'error';
 
+export interface PipelineError {
+  level: 'warn' | 'error';
+  message: string;
+  timestamp: number;
+}
+
 interface TranscriptState {
   segments: TranscriptSegment[];
   isRecording: boolean;
   metrics: PipelineMetrics | null;
   status: PipelineStatus;
+  errors: PipelineError[];
 
   addSegment: (segment: TranscriptSegment) => void;
   updateSegment: (id: string, update: Partial<TranscriptSegment>) => void;
@@ -15,6 +22,8 @@ interface TranscriptState {
   setRecording: (recording: boolean) => void;
   setStatus: (status: PipelineStatus) => void;
   setMetrics: (metrics: PipelineMetrics) => void;
+  addError: (error: PipelineError) => void;
+  dismissError: (timestamp: number) => void;
 }
 
 export const useTranscriptStore = create<TranscriptState>((set) => ({
@@ -22,6 +31,7 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
   isRecording: false,
   metrics: null,
   status: 'idle',
+  errors: [],
 
   addSegment: (segment) =>
     set((state) => {
@@ -49,4 +59,13 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
   setRecording: (recording) => set({ isRecording: recording }),
   setStatus: (status) => set({ status }),
   setMetrics: (metrics) => set({ metrics }),
+  addError: (error) =>
+    set((state) => ({
+      // Keep max 5 errors visible
+      errors: [...state.errors, error].slice(-5),
+    })),
+  dismissError: (timestamp) =>
+    set((state) => ({
+      errors: state.errors.filter((e) => e.timestamp !== timestamp),
+    })),
 }));

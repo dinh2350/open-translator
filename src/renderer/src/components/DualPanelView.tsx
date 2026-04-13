@@ -53,7 +53,7 @@ export function DualPanelView(): React.JSX.Element {
     <div className="flex flex-col flex-1 min-h-0 w-full">
       {/* Sync scroll toggle */}
       <div className="flex items-center justify-end px-4 py-1 shrink-0">
-        <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none">
+        <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={syncScroll}
@@ -64,7 +64,7 @@ export function DualPanelView(): React.JSX.Element {
         </label>
       </div>
 
-      <div className="flex flex-1 min-h-0 w-full gap-0 bg-gray-800 rounded-lg overflow-hidden">
+      <div className="flex flex-1 min-h-0 w-full gap-0 bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
         <TranscriptPanel
           segments={segments}
           type="original"
@@ -74,7 +74,7 @@ export function DualPanelView(): React.JSX.Element {
           onUserScroll={handleLeftScroll}
           syncToSegmentId={syncScroll ? syncTargetId.left : null}
         />
-        <div className="w-px bg-gray-700 shrink-0" />
+        <div className="w-px bg-gray-300 dark:bg-gray-700 shrink-0" />
         <TranscriptPanel
           segments={segments}
           type="translated"

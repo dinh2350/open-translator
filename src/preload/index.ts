@@ -12,6 +12,17 @@ const api = {
   sessionStop: (): Promise<{ success: boolean }> => {
     return ipcRenderer.invoke('session:stop');
   },
+  getSettings: (): Promise<import('@shared/types').AppSettings> => {
+    return ipcRenderer.invoke('settings:get');
+  },
+  updateSettings: (
+    partial: Partial<import('@shared/types').AppSettings>
+  ): Promise<import('@shared/types').AppSettings> => {
+    return ipcRenderer.invoke('settings:update', partial);
+  },
+  switchWhisperModel: (model: string): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('model:switch-whisper', model);
+  },
   onPipelineEvent: (callback: (event: string, data: unknown) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, eventName: string, data: unknown): void => {
       callback(eventName, data);

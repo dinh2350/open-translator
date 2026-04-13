@@ -7,6 +7,7 @@ import { MetricsTracker } from './metrics';
 import { AdaptiveModelQuality } from './adaptive';
 import type { AdaptiveEvent } from './adaptive';
 import type { TranslationService } from '@main/translation/types';
+import { logError } from './logger';
 
 type OrchestratorEvent = 'segment' | 'metrics' | 'status' | 'model:switched';
 type StatusValue = 'idle' | 'recording' | 'processing';
@@ -98,7 +99,7 @@ export class PipelineOrchestrator {
         }
       })
       .catch((err) => {
-        console.error('[orchestrator] Interim STT error:', err);
+        logError('warn', 'stt', err, { action: 'interim-transcribe' });
       });
   }
 
@@ -198,7 +199,7 @@ export class PipelineOrchestrator {
         return this.runTranslation(segment, enqueueTime);
       })
       .catch((err) => {
-        console.error('[orchestrator] STT error:', err);
+        logError('error', 'stt', err, { action: 'final-transcribe' });
         this.processingSTT = false;
         this.checkIdle();
         this.processNext();
@@ -227,7 +228,7 @@ export class PipelineOrchestrator {
         this.processNext();
       });
     } catch (err) {
-      console.error('[orchestrator] Translation error:', err);
+      logError('error', 'translation', err, { text: segment.text.substring(0, 50) });
       // Still emit segment without translation
       segment.totalLatencyMs = performance.now() - enqueueTime;
       this._metrics.recordTotal(segment.totalLatencyMs);

@@ -109,12 +109,12 @@ export function TranscriptPanel({
 
   return (
     <div className="flex flex-col flex-1 min-w-0 relative">
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide px-4 py-2 shrink-0">
+      <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide px-4 py-2 shrink-0">
         {title}
       </h2>
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-4">
         {segments.length === 0 && (
-          <p className="text-gray-500 text-sm text-center mt-8">
+          <p className="text-gray-400 dark:text-gray-500 text-sm text-center mt-8">
             {type === 'original'
               ? 'Speak into the microphone to see transcription...'
               : 'Translations will appear here...'}
@@ -131,7 +131,7 @@ export function TranscriptPanel({
               data-segment-id={seg.id}
               className="mb-2 min-h-[2.25rem]"
             >
-              <span className="text-gray-600 text-xs block mb-0.5">
+              <span className="text-gray-400 dark:text-gray-600 text-xs block mb-0.5">
                 {formatTime(seg.timestamp)}
               </span>
               <span
@@ -140,8 +140,8 @@ export function TranscriptPanel({
                   isInterim
                     ? 'text-gray-400 italic opacity-60'
                     : isPending
-                      ? 'text-gray-500 italic opacity-60'
-                      : 'text-white opacity-100',
+                      ? 'text-gray-400 dark:text-gray-500 italic opacity-60'
+                      : 'text-gray-900 dark:text-white opacity-100',
                 ].join(' ')}
               >
                 {isInterim && (

@@ -87,9 +87,11 @@ export class VoiceActivityDetector {
   }
 
   async init(): Promise<void> {
+    // In dev: resources/ is at project root
+    // In packaged app: resources/ is inside app.asar (auto-redirected to app.asar.unpacked/)
     const modelPath = is.dev
       ? join(process.cwd(), 'resources/models/silero_vad.onnx')
-      : join(app.getAppPath(), '..', 'resources/models/silero_vad.onnx');
+      : join(app.getAppPath(), 'resources/models/silero_vad.onnx');
 
     this.session = await ort.InferenceSession.create(modelPath, {
       executionProviders: ['cpu'],

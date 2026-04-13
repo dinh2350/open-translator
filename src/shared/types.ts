@@ -23,6 +23,7 @@ export interface PipelineMetrics {
   translationP95Ms: number;
   totalP95Ms: number;
   memoryUsageMB: number;
+  systemMemoryMB: number;
   activeModel: 'tiny' | 'base' | 'small';
   chunksProcessed: number;
   chunksDropped: number;
@@ -33,7 +34,7 @@ export interface AppSettings {
   whisperModel: 'tiny' | 'base' | 'small';
   autoModelSwitch: boolean;
   language: { source: string; target: string };
-  ui: { theme: 'light' | 'dark'; fontSize: number };
+  ui: { theme: 'light' | 'dark' | 'system'; fontSize: number };
 }
 
 export type IPCEvents = {

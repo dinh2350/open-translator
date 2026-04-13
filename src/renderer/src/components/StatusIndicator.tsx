@@ -14,7 +14,7 @@ export function StatusIndicator(): React.JSX.Element {
   const config = statusConfig[status];
 
   return (
-    <div className="flex items-center gap-2 text-xs text-gray-400">
+    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
       <span
         className={[
           'inline-block w-2 h-2 rounded-full',
@@ -24,7 +24,7 @@ export function StatusIndicator(): React.JSX.Element {
       />
       <span>{config.label}</span>
       {metrics && status !== 'idle' && (
-        <span className="text-gray-600">
+        <span className="text-gray-400 dark:text-gray-600">
           {metrics.activeModel} · P95 {metrics.totalP95Ms.toFixed(0)}ms
         </span>
       )}

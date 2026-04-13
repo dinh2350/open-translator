@@ -3,6 +3,15 @@ import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 import { registerIPCHandlers, onAudioChunk, feedAudio } from './ipc';
+import { logError } from './pipeline/logger';
+
+// Catch unhandled exceptions/rejections — never crash the app
+process.on('uncaughtException', (error) => {
+  logError('fatal', 'uncaught-exception', error);
+});
+process.on('unhandledRejection', (reason) => {
+  logError('fatal', 'unhandled-rejection', reason);
+});
 
 let mainWindow: BrowserWindow | null = null;
 
