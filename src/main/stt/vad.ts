@@ -11,9 +11,10 @@ import { is } from '@electron-toolkit/utils';
  * @ricky0123/vad-node is deprecated (Oct 2024), so we use the
  * Silero ONNX model directly with onnxruntime-node.
  *
- * Model inputs:  input [1, 1536], sr [16000n], h [2, 1, 64], c [2, 1, 64]
- * Model outputs: output (speech probability), hn (hidden state), cn (cell state)
- * Frame size: 1536 samples (96ms at 16kHz)
+ * Model inputs:  input [1, 576], sr [16000n (scalar)], state [2, 1, 128]
+ * Model outputs: output (speech probability), stateN (updated state)
+ * Frame size: 512 samples (32ms at 16kHz) + 64-sample context = 576 total
+ * Context: last 64 samples are prepended to each frame (official OnnxWrapper pattern)
  */
 
 /** Tunable VAD parameters */
@@ -41,10 +42,12 @@ const DEFAULT_OPTIONS: VADOptions = {
   interimIntervalMs: 1000,
 };
 
-/** Frame size for Silero VAD v4 at 16kHz */
-const FRAME_SIZE = 1536;
+/** Frame size for Silero VAD v5 at 16kHz */
+const FRAME_SIZE = 512;
+/** Context size prepended to each frame (official OnnxWrapper pattern) */
+const CONTEXT_SIZE = 64;
 /** Milliseconds per frame at 16kHz */
-const MS_PER_FRAME = (FRAME_SIZE / 16000) * 1000; // 96ms
+const MS_PER_FRAME = (FRAME_SIZE / 16000) * 1000; // 32ms
 
 type SpeechStartCallback = () => void;
 type SpeechEndCallback = (audio: Float32Array) => void;
@@ -52,9 +55,9 @@ type SpeechActiveCallback = (audio: Float32Array) => void;
 
 export class VoiceActivityDetector {
   private session: ort.InferenceSession | null = null;
-  private h: ort.Tensor | null = null;
-  private c: ort.Tensor | null = null;
+  private state: ort.Tensor | null = null;
   private sr: ort.Tensor | null = null;
+  private context: Float32Array = new Float32Array(CONTEXT_SIZE);
   private options: VADOptions;
 
   // Frame processor state
@@ -100,37 +103,44 @@ export class VoiceActivityDetector {
     console.log('[vad] Model inputs:', this.session.inputNames);
     console.log('[vad] Model outputs:', this.session.outputNames);
 
-    this.sr = new ort.Tensor('int64', BigInt64Array.from([16000n]), [1]);
+    this.sr = new ort.Tensor('int64', BigInt64Array.from([16000n]), []);
     this.resetState();
   }
 
   private resetState(): void {
-    this.h = new ort.Tensor('float32', new Float32Array(2 * 1 * 64), [2, 1, 64]);
-    this.c = new ort.Tensor('float32', new Float32Array(2 * 1 * 64), [2, 1, 64]);
+    this.state = new ort.Tensor('float32', new Float32Array(2 * 1 * 128), [2, 1, 128]);
+    this.context = new Float32Array(CONTEXT_SIZE);
   }
 
   /**
-   * Process a single 1536-sample frame through the Silero VAD v4 model.
+   * Process a single 512-sample frame through the Silero VAD v5 model.
+   * Prepends a 64-sample context window as required by the official OnnxWrapper.
    * Returns speech probability (0-1).
    */
   private async runModel(frame: Float32Array): Promise<number> {
-    if (!this.session || !this.h || !this.c || !this.sr) {
+    if (!this.session || !this.state || !this.sr) {
       throw new Error('VAD not initialized. Call init() first.');
     }
 
-    const inputTensor = new ort.Tensor('float32', frame, [1, frame.length]);
+    // Prepend context: [context(64) + frame(512)] = 576 samples total
+    const inputData = new Float32Array(CONTEXT_SIZE + frame.length);
+    inputData.set(this.context, 0);
+    inputData.set(frame, CONTEXT_SIZE);
+
+    const inputTensor = new ort.Tensor('float32', inputData, [1, inputData.length]);
     const result = await this.session.run({
       input: inputTensor,
       sr: this.sr,
-      h: this.h,
-      c: this.c,
+      state: this.state,
     });
 
-    if (!result['hn'] || !result['cn']) {
-      throw new Error('Missing state output from VAD model');
+    if (!result['stateN']) {
+      throw new Error('Missing stateN output from VAD model');
     }
-    this.h = result['hn'] as ort.Tensor;
-    this.c = result['cn'] as ort.Tensor;
+    this.state = result['stateN'] as ort.Tensor;
+
+    // Update context: keep last CONTEXT_SIZE samples for next call
+    this.context = inputData.slice(-CONTEXT_SIZE);
 
     const output = result['output']?.data;
     if (!output || typeof output[0] !== 'number') {
@@ -279,8 +289,7 @@ export class VoiceActivityDetector {
       await this.session.release();
       this.session = null;
     }
-    this.h = null;
-    this.c = null;
+    this.state = null;
     this.sr = null;
     this.onSpeechStartCallbacks = [];
     this.onSpeechEndCallbacks = [];
