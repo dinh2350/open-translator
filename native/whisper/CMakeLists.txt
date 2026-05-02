@@ -19,6 +19,13 @@ set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 if(APPLE)
   set(GGML_METAL ON CACHE BOOL "" FORCE)
   set(GGML_METAL_EMBED_LIBRARY ON CACHE BOOL "" FORCE)
+
+  # Enable Core ML (Apple Neural Engine) on arm64 — 3x faster encoder vs Metal
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    set(WHISPER_COREML ON CACHE BOOL "" FORCE)
+    # Allow Metal GPU fallback when .mlmodelc file is missing
+    set(WHISPER_COREML_ALLOW_FALLBACK ON CACHE BOOL "" FORCE)
+  endif()
 endif()
 
 # Build whisper.cpp as a subdirectory (static library)
@@ -62,7 +69,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   NAPI_VERSION=8
 )
 
-# macOS-specific linker flags for Metal framework
+# macOS-specific linker flags for Metal and Core ML frameworks
 if(APPLE)
   target_link_libraries(${PROJECT_NAME} PRIVATE
     "-framework Accelerate"
@@ -70,6 +77,11 @@ if(APPLE)
     "-framework Metal"
     "-framework MetalKit"
   )
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+      "-framework CoreML"
+    )
+  endif()
   set_target_properties(${PROJECT_NAME} PROPERTIES
     XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET "13.0"
   )

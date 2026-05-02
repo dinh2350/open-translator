@@ -1,6 +1,7 @@
 import { resolve, join } from 'path';
 import { randomUUID } from 'crypto';
 import { performance } from 'perf_hooks';
+import { totalmem } from 'os';
 import { app } from 'electron';
 import { is } from '@electron-toolkit/utils';
 import type { AudioChunk, TranscriptSegment } from '@shared/types';
@@ -20,7 +21,14 @@ type WhisperModelType = InstanceType<typeof WhisperModel>;
 const MIN_SPEECH_SAMPLES = 8000; // 0.5s at 16kHz — skip very short segments
 const MAX_SPEECH_SAMPLES = 480000; // 30s at 16kHz — warn on very long segments
 
-export type WhisperModelName = 'tiny' | 'tiny.en' | 'base' | 'base.en' | 'small' | 'small.en';
+export type WhisperModelName =
+  | 'tiny'
+  | 'tiny.en'
+  | 'base'
+  | 'base.en'
+  | 'small'
+  | 'small.en'
+  | 'large-v3-turbo';
 
 export interface TranscribeOptions {
   /** Whether this is the final transcription for the utterance (default: true) */
@@ -41,13 +49,32 @@ export class WhisperSTT {
   }
 
   async init(modelName: WhisperModelName = 'base.en'): Promise<void> {
+    // RAM guard for large model — requires 12GB+ free to coexist with other apps
+    if (modelName === 'large-v3-turbo') {
+      const totalRamGB = totalmem() / (1024 * 1024 * 1024);
+      if (totalRamGB < 12) {
+        throw new Error(
+          `whisper large-v3-turbo requires 12GB+ RAM. Detected: ${Math.round(totalRamGB)}GB.`
+        );
+      }
+    }
+
     const registryKey = `whisper-${modelName}`;
     const modelPath = await this.modelManager.ensureModel(registryKey);
 
+    const usesCoreML = process.platform === 'darwin' && process.arch === 'arm64';
     console.log(`[whisper] Loading model ${modelName} from ${modelPath}`);
+    if (usesCoreML) {
+      console.log(
+        '[whisper] Core ML enabled — will use Apple Neural Engine encoder if ' +
+          `${modelName}-encoder.mlmodelc is present alongside model file`
+      );
+    }
     const t0 = performance.now();
 
-    this.model = new WhisperModel(modelPath, { gpu: false, nThreads: 4 });
+    // On Apple Silicon, use fewer CPU threads — ANE handles encoder workload
+    const nThreads = usesCoreML ? 2 : 4;
+    this.model = new WhisperModel(modelPath, { gpu: false, nThreads });
     this.currentModelName = modelName;
 
     console.log(`[whisper] Model loaded in ${(performance.now() - t0).toFixed(0)}ms`);
